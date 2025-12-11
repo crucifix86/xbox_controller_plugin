@@ -1,0 +1,9 @@
+# Build artifacts
+*.pkg
+pkg.gp4
+eboot.bin
+sce_sys/param.sfo
+installer/x64/
+
+# Keep the prx in assets for convenience but it's regenerated
+# assets/xbox_controller.prx

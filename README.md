@@ -35,6 +35,15 @@ Single player mode tested and functional. The Xbox 360 controller successfully c
 
 ## Installation
 
+### Method 1: PKG Installer (Recommended)
+
+1. Download the installer PKG from [Releases](https://github.com/crucifix86/xbox_controller_plugin/releases)
+2. Install via GoldHEN's Package Installer (USB or Remote PKG)
+3. Run "Xbox Controller Installer" once from the home screen
+4. Reboot and load GoldHEN
+
+### Method 2: Manual FTP
+
 1. Connect to PS4 via FTP (port 2121)
 2. Upload `xbox_controller.prx` to `/data/GoldHEN/plugins/`
 3. Add to `/data/GoldHEN/plugins.ini`:
@@ -85,10 +94,17 @@ Requires:
 
 ```bash
 export OO_PS4_TOOLCHAIN=/path/to/openorbis
+
+# Build plugin only
 make
+
+# Build installer PKG
+make installer
 ```
 
-Output: `bin/xbox_controller.prx`
+Output:
+- Plugin: `bin/xbox_controller.prx`
+- Installer: `installer/IV0000-XBOX00001_00-XBOXCTRLINSTALL0.pkg`
 
 ## Technical Details
 
