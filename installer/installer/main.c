@@ -33,44 +33,39 @@ static int file_exists(const char* path) {
     return 0;
 }
 
-// Copy file from src to dst
+// Copy file from src to dst (chunked, no fstat needed)
 static int copy_file(const char* src, const char* dst) {
     int src_fd = sceKernelOpen(src, 0x0000, 0);  // O_RDONLY
     if (src_fd < 0) {
         return -1;
     }
 
-    OrbisKernelStat stat;
-    if (sceKernelFstat(src_fd, &stat) < 0) {
+    int dst_fd = sceKernelOpen(dst, 0x0601, 0777);  // O_WRONLY | O_CREAT | O_TRUNC
+    if (dst_fd < 0) {
         sceKernelClose(src_fd);
         return -2;
     }
 
-    void* buffer = malloc(stat.st_size);
-    if (!buffer) {
-        sceKernelClose(src_fd);
-        return -3;
+    // Read and write in 4KB chunks
+    char buffer[4096];
+    ssize_t bytes_read;
+    ssize_t total_written = 0;
+
+    while ((bytes_read = sceKernelRead(src_fd, buffer, sizeof(buffer))) > 0) {
+        ssize_t bytes_written = sceKernelWrite(dst_fd, buffer, bytes_read);
+        if (bytes_written != bytes_read) {
+            sceKernelClose(src_fd);
+            sceKernelClose(dst_fd);
+            return -3;
+        }
+        total_written += bytes_written;
     }
 
-    ssize_t bytes_read = sceKernelRead(src_fd, buffer, stat.st_size);
     sceKernelClose(src_fd);
-
-    if (bytes_read != stat.st_size) {
-        free(buffer);
-        return -4;
-    }
-
-    int dst_fd = sceKernelOpen(dst, 0x0601, 0777);  // O_WRONLY | O_CREAT | O_TRUNC
-    if (dst_fd < 0) {
-        free(buffer);
-        return -5;
-    }
-
-    ssize_t bytes_written = sceKernelWrite(dst_fd, buffer, stat.st_size);
     sceKernelClose(dst_fd);
-    free(buffer);
 
-    return (bytes_written == stat.st_size) ? 0 : -6;
+    // Return error if we read nothing
+    return (total_written > 0) ? 0 : -4;
 }
 
 // Read entire file into malloc'd buffer (caller frees)
