@@ -1,5 +1,5 @@
-# Xbox Controller Plugin Installer
-TITLE       := Xbox Controller Installer
+# Xbox Controller Plugin Manager (Toggle On/Off)
+TITLE       := Xbox Controller Toggle
 VERSION     := 1.00
 TITLE_ID    := XBOX00001
 CONTENT_ID  := IV0000-XBOX00001_00-XBOXCTRLINSTALL0

@@ -1,13 +1,17 @@
 /*
- * Xbox Controller Plugin Installer
- * Copies xbox_controller.prx to /data/GoldHEN/plugins/
- * and updates plugins.ini
+ * Xbox Controller Plugin Manager
+ * Toggle: Install or Uninstall the plugin
+ * - If not installed: copies prx and updates plugins.ini
+ * - If installed: removes from plugins.ini (disables)
  */
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <orbis/libkernel.h>
+
+#define PLUGIN_PATH "/data/GoldHEN/plugins/xbox_controller.prx"
+#define INI_PATH "/data/GoldHEN/plugins.ini"
 
 // Notification helper
 static void notify(const char* message) {
@@ -19,6 +23,16 @@ static void notify(const char* message) {
     sceKernelSendNotificationRequest(0, &req, sizeof(req), 0);
 }
 
+// Check if file exists
+static int file_exists(const char* path) {
+    int fd = sceKernelOpen(path, 0x0000, 0);  // O_RDONLY
+    if (fd >= 0) {
+        sceKernelClose(fd);
+        return 1;
+    }
+    return 0;
+}
+
 // Copy file from src to dst
 static int copy_file(const char* src, const char* dst) {
     int src_fd = sceKernelOpen(src, 0x0000, 0);  // O_RDONLY
@@ -26,14 +40,12 @@ static int copy_file(const char* src, const char* dst) {
         return -1;
     }
 
-    // Get file size
     OrbisKernelStat stat;
     if (sceKernelFstat(src_fd, &stat) < 0) {
         sceKernelClose(src_fd);
         return -2;
     }
 
-    // Read file into memory
     void* buffer = malloc(stat.st_size);
     if (!buffer) {
         sceKernelClose(src_fd);
@@ -48,7 +60,6 @@ static int copy_file(const char* src, const char* dst) {
         return -4;
     }
 
-    // Write to destination (create/truncate)
     int dst_fd = sceKernelOpen(dst, 0x0601, 0777);  // O_WRONLY | O_CREAT | O_TRUNC
     if (dst_fd < 0) {
         free(buffer);
@@ -59,107 +70,203 @@ static int copy_file(const char* src, const char* dst) {
     sceKernelClose(dst_fd);
     free(buffer);
 
-    if (bytes_written != stat.st_size) {
-        return -6;
-    }
-
-    return 0;
+    return (bytes_written == stat.st_size) ? 0 : -6;
 }
 
-// Check if line exists in file
-static int line_in_file(const char* filepath, const char* line) {
-    int fd = sceKernelOpen(filepath, 0x0000, 0);  // O_RDONLY
-    if (fd < 0) {
-        return 0;  // File doesn't exist = line not in file
-    }
+// Read entire file into malloc'd buffer (caller frees)
+static char* read_file(const char* path, size_t* out_size) {
+    int fd = sceKernelOpen(path, 0x0000, 0);
+    if (fd < 0) return NULL;
 
     OrbisKernelStat stat;
     if (sceKernelFstat(fd, &stat) < 0 || stat.st_size == 0) {
         sceKernelClose(fd);
-        return 0;
+        return NULL;
     }
 
     char* buffer = malloc(stat.st_size + 1);
     if (!buffer) {
         sceKernelClose(fd);
-        return 0;
+        return NULL;
     }
 
     sceKernelRead(fd, buffer, stat.st_size);
     buffer[stat.st_size] = '\0';
     sceKernelClose(fd);
 
-    int found = (strstr(buffer, line) != NULL);
-    free(buffer);
-    return found;
+    if (out_size) *out_size = stat.st_size;
+    return buffer;
 }
 
-// Append line to file
-static int append_to_file(const char* filepath, const char* content) {
-    // O_WRONLY | O_CREAT | O_APPEND
-    int fd = sceKernelOpen(filepath, 0x0409, 0777);
-    if (fd < 0) {
+// Write buffer to file
+static int write_file(const char* path, const char* content, size_t size) {
+    int fd = sceKernelOpen(path, 0x0601, 0777);  // O_WRONLY | O_CREAT | O_TRUNC
+    if (fd < 0) return -1;
+
+    ssize_t written = sceKernelWrite(fd, content, size);
+    sceKernelClose(fd);
+    return (written == (ssize_t)size) ? 0 : -1;
+}
+
+// Check if plugin is enabled in plugins.ini
+static int plugin_is_enabled(void) {
+    char* ini = read_file(INI_PATH, NULL);
+    if (!ini) return 0;
+
+    // Check for uncommented plugin path
+    char* line = ini;
+    int enabled = 0;
+
+    while (*line) {
+        // Skip whitespace
+        while (*line == ' ' || *line == '\t') line++;
+
+        // Check if this line has our plugin (not commented)
+        if (*line != ';' && *line != '#') {
+            if (strstr(line, "xbox_controller.prx") != NULL) {
+                enabled = 1;
+                break;
+            }
+        }
+
+        // Move to next line
+        while (*line && *line != '\n') line++;
+        if (*line == '\n') line++;
+    }
+
+    free(ini);
+    return enabled;
+}
+
+// Remove or comment out plugin from plugins.ini
+static int disable_plugin(void) {
+    size_t size;
+    char* ini = read_file(INI_PATH, &size);
+    if (!ini) return -1;
+
+    // Create new buffer for modified ini
+    char* new_ini = malloc(size + 16);  // Extra space for safety
+    if (!new_ini) {
+        free(ini);
         return -1;
     }
 
-    ssize_t written = sceKernelWrite(fd, content, strlen(content));
+    char* src = ini;
+    char* dst = new_ini;
+
+    while (*src) {
+        char* line_start = src;
+
+        // Find end of line
+        while (*src && *src != '\n') src++;
+        int line_len = src - line_start;
+        if (*src == '\n') src++;
+
+        // Check if this line contains our plugin
+        char line_copy[512];
+        if (line_len < 511) {
+            memcpy(line_copy, line_start, line_len);
+            line_copy[line_len] = '\0';
+
+            if (strstr(line_copy, "xbox_controller.prx") != NULL) {
+                // Skip this line entirely (don't copy it)
+                continue;
+            }
+        }
+
+        // Copy line to output
+        memcpy(dst, line_start, line_len);
+        dst += line_len;
+        *dst++ = '\n';
+    }
+    *dst = '\0';
+
+    int ret = write_file(INI_PATH, new_ini, dst - new_ini);
+
+    free(ini);
+    free(new_ini);
+    return ret;
+}
+
+// Add plugin to plugins.ini
+static int enable_plugin(void) {
+    size_t size = 0;
+    char* ini = read_file(INI_PATH, &size);
+
+    // Check if [default] section exists
+    int has_default = ini && strstr(ini, "[default]") != NULL;
+
+    int fd = sceKernelOpen(INI_PATH, 0x0409, 0777);  // O_WRONLY | O_CREAT | O_APPEND
+    if (fd < 0) {
+        if (ini) free(ini);
+        return -1;
+    }
+
+    if (!has_default) {
+        sceKernelWrite(fd, "[default]\n", 10);
+    }
+    sceKernelWrite(fd, PLUGIN_PATH "\n", strlen(PLUGIN_PATH) + 1);
     sceKernelClose(fd);
 
-    return (written > 0) ? 0 : -1;
+    if (ini) free(ini);
+    return 0;
 }
 
 int main(void) {
-    // Give system time to initialize
     sceKernelUsleep(500000);
 
-    notify("Xbox Controller Installer");
+    notify("Xbox Controller Manager");
     sceKernelUsleep(1000000);
 
-    // Create plugins directory if needed
+    // Create directories if needed
     sceKernelMkdir("/data/GoldHEN", 0777);
     sceKernelMkdir("/data/GoldHEN/plugins", 0777);
 
-    // Source: bundled in app's assets folder
-    // The app directory is /mnt/sandbox/PFSX00001_000/app0/
-    const char* src_prx = "/app0/assets/xbox_controller.prx";
-    const char* dst_prx = "/data/GoldHEN/plugins/xbox_controller.prx";
-    const char* ini_path = "/data/GoldHEN/plugins.ini";
-    const char* plugin_entry = "/data/GoldHEN/plugins/xbox_controller.prx";
+    // Check current state
+    int prx_exists = file_exists(PLUGIN_PATH);
+    int is_enabled = plugin_is_enabled();
 
-    // Copy the .prx file
-    int ret = copy_file(src_prx, dst_prx);
-    if (ret < 0) {
-        char msg[64];
-        snprintf(msg, sizeof(msg), "Copy failed! Error: %d", ret);
-        notify(msg);
-        sceKernelUsleep(3000000);
+    if (is_enabled) {
+        // Currently enabled -> Disable it
+        notify("Disabling Xbox Controller...");
+        sceKernelUsleep(1000000);
 
-        // Exit app
-        sceKernelSleep(2);
-        return 1;
-    }
-
-    notify("Plugin copied!");
-    sceKernelUsleep(1000000);
-
-    // Update plugins.ini if needed
-    if (!line_in_file(ini_path, plugin_entry)) {
-        // Check if file exists and has [default] section
-        if (!line_in_file(ini_path, "[default]")) {
-            append_to_file(ini_path, "[default]\n");
+        if (disable_plugin() == 0) {
+            notify("Plugin DISABLED!");
+            sceKernelUsleep(1000000);
+            notify("Reboot PS4 to apply.");
+        } else {
+            notify("Failed to disable!");
         }
-        append_to_file(ini_path, plugin_entry);
-        append_to_file(ini_path, "\n");
-        notify("plugins.ini updated!");
     } else {
-        notify("plugins.ini already configured");
+        // Not enabled -> Install/Enable it
+        notify("Installing Xbox Controller...");
+        sceKernelUsleep(1000000);
+
+        // Copy PRX if not present
+        if (!prx_exists) {
+            int ret = copy_file("/app0/assets/xbox_controller.prx", PLUGIN_PATH);
+            if (ret < 0) {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "Copy failed! Error: %d", ret);
+                notify(msg);
+                sceKernelUsleep(3000000);
+                return 1;
+            }
+            notify("Plugin copied!");
+            sceKernelUsleep(1000000);
+        }
+
+        // Enable in plugins.ini
+        if (enable_plugin() == 0) {
+            notify("Plugin ENABLED!");
+            sceKernelUsleep(1000000);
+            notify("Reboot PS4 to apply.");
+        } else {
+            notify("Failed to enable!");
+        }
     }
 
-    sceKernelUsleep(1500000);
-    notify("Installation complete! Reboot PS4.");
-
-    // Keep app alive briefly then exit
     sceKernelUsleep(3000000);
-
     return 0;
 }

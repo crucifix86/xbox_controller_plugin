@@ -35,12 +35,13 @@ Single player mode tested and functional. The Xbox 360 controller successfully c
 
 ## Installation
 
-### Method 1: PKG Installer (Recommended)
+### Method 1: PKG Toggle App (Recommended)
 
-1. Download the installer PKG from [Releases](https://github.com/crucifix86/xbox_controller_plugin/releases)
+1. Download the PKG from [Releases](https://github.com/crucifix86/xbox_controller_plugin/releases)
 2. Install via GoldHEN's Package Installer (USB or Remote PKG)
-3. Run "Xbox Controller Installer" once from the home screen
-4. Reboot and load GoldHEN
+3. Run "Xbox Controller Toggle" from home screen to **enable**
+4. Run it again to **disable**
+5. Reboot after toggling to apply changes
 
 ### Method 2: Manual FTP
 
