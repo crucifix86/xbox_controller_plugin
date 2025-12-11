@@ -2,7 +2,11 @@
 
 A GoldHEN plugin that enables Xbox 360 USB controllers on jailbroken PS4 consoles.
 
-## Status: WORKING! 🎮
+## ⚠️ BETA SOFTWARE - USE AT YOUR OWN RISK ⚠️
+
+**This plugin is experimental and may cause instability.** During development it caused jailbreak issues requiring multiple reboots. Back up your data before using.
+
+## Status: WORKING (Single Player)
 
 Single player mode tested and functional. The Xbox 360 controller successfully controls games on PS4!
 
@@ -16,6 +20,11 @@ Single player mode tested and functional. The Xbox 360 controller successfully c
 - **Multiplayer** - Theory: Launch game with DS4, then Xbox controller might register as Player 2. Needs testing!
 - Multiple Xbox controllers
 - Rumble/vibration output
+
+### Known Issues
+- May cause jailbreak instability with repeated loading/unloading
+- Some homebrew apps may not launch while plugin is active
+- Aggressive polling settings can cause black screen crashes
 
 ## Requirements
 
