@@ -205,7 +205,9 @@ static int enable_plugin(void) {
     if (!has_default) {
         sceKernelWrite(fd, "[default]\n", 10);
     }
-    sceKernelWrite(fd, PLUGIN_PATH "\n", strlen(PLUGIN_PATH) + 1);
+    // Write path and newline separately (don't include null terminator)
+    sceKernelWrite(fd, PLUGIN_PATH, strlen(PLUGIN_PATH));
+    sceKernelWrite(fd, "\n", 1);
     sceKernelClose(fd);
 
     if (ini) free(ini);
@@ -245,28 +247,46 @@ int main(void) {
 
         // Copy PRX if not present
         if (!prx_exists) {
+            notify("Copying plugin file...");
+            sceKernelUsleep(500000);
+
             int ret = copy_file("/app0/assets/xbox_controller.prx", PLUGIN_PATH);
             if (ret < 0) {
                 char msg[64];
                 snprintf(msg, sizeof(msg), "Copy failed! Error: %d", ret);
                 notify(msg);
-                sceKernelUsleep(3000000);
-                return 1;
+                sceKernelUsleep(5000000);
+            } else {
+                notify("Plugin file copied OK!");
+                sceKernelUsleep(1000000);
             }
-            notify("Plugin copied!");
+        } else {
+            notify("Plugin file exists, skipping copy");
             sceKernelUsleep(1000000);
         }
 
         // Enable in plugins.ini
-        if (enable_plugin() == 0) {
-            notify("Plugin ENABLED!");
+        notify("Updating plugins.ini...");
+        sceKernelUsleep(500000);
+
+        int ini_ret = enable_plugin();
+        if (ini_ret == 0) {
+            notify("plugins.ini updated OK!");
             sceKernelUsleep(1000000);
-            notify("Reboot PS4 to apply.");
+            notify("Plugin ENABLED! Reboot PS4.");
         } else {
-            notify("Failed to enable!");
+            char msg[64];
+            snprintf(msg, sizeof(msg), "INI update failed: %d", ini_ret);
+            notify(msg);
+            sceKernelUsleep(3000000);
         }
     }
 
     sceKernelUsleep(3000000);
+
+    // Exit gracefully - PS4 apps shouldn't just return
+    for (;;) {
+        sceKernelUsleep(1000000);
+    }
     return 0;
 }
