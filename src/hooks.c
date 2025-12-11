@@ -124,8 +124,8 @@ static void inject_xbox_input(OrbisPadData* pData) {
     if (g_xbox_handle != NULL) {
         uint64_t now = sceKernelGetProcessTime();
 
-        // Read every 2ms (500Hz) for responsive input
-        if (now - g_last_read_time > 2000) {
+        // Read every 1ms (1000Hz) - edge of stability
+        if (now - g_last_read_time > 1000) {
             g_last_read_time = now;
 
             Xbox360Report xbox_report;
@@ -138,7 +138,7 @@ static void inject_xbox_input(OrbisPadData* pData) {
                 (unsigned char*)&xbox_report,
                 sizeof(xbox_report),
                 &transferred,
-                1  // 1ms timeout required
+                2  // 2ms timeout for reliability
             );
 
             if (ret == 0 && transferred >= 20) {  // Xbox report is 20 bytes
