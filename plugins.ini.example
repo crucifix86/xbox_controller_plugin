@@ -1,0 +1,10 @@
+# GoldHEN Plugins Configuration
+# Copy this to /data/GoldHEN/plugins.ini on your PS4
+
+# [default] section loads for all games
+[default]
+/data/GoldHEN/plugins/xbox_controller.prx
+
+# You can also load plugins for specific games by title ID:
+# [CUSA00001]
+# /data/GoldHEN/plugins/xbox_controller.prx

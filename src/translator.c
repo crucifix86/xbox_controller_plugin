@@ -1,0 +1,200 @@
+/*
+ * Xbox 360 to DualShock 4 Input Translator
+ * Converts Xbox 360 USB reports to PS4 OrbisPadData format
+ */
+
+#include "translator.h"
+#include <string.h>
+
+// Static timestamp counter
+static uint64_t s_timestamp = 0;
+
+/*
+ * Initialize translator with default configuration
+ */
+void translator_init(TranslatorConfig* config) {
+    if (!config) return;
+
+    config->stick_deadzone = DEFAULT_STICK_DEADZONE;
+    config->trigger_threshold = DEFAULT_TRIGGER_THRESHOLD;
+    config->invert_left_y = 1;      // PS4 Y-axis is inverted from Xbox
+    config->invert_right_y = 1;
+    config->swap_ab = 0;
+    config->swap_xy = 0;
+}
+
+/*
+ * Convert Xbox 360 16-bit signed stick value to DS4 8-bit unsigned
+ *
+ * Xbox:  -32768 to 32767, center = 0
+ * DS4:   0 to 255, center = 128
+ */
+static inline uint8_t convert_stick_value(int16_t xbox_val) {
+    int32_t temp = (int32_t)xbox_val + 32768;
+    return (uint8_t)(temp >> 8);
+}
+
+/*
+ * Apply deadzone to stick value
+ */
+uint8_t translator_apply_deadzone(uint8_t value, uint8_t deadzone) {
+    if (deadzone == 0) return value;
+
+    int16_t centered = (int16_t)value - 128;
+    int16_t abs_centered = (centered < 0) ? -centered : centered;
+
+    if (abs_centered <= deadzone) {
+        return 128;
+    }
+
+    int16_t range = 127 - deadzone;
+    int16_t scaled = ((abs_centered - deadzone) * 127) / range;
+
+    if (centered < 0) {
+        return (uint8_t)(128 - scaled);
+    } else {
+        return (uint8_t)(128 + scaled);
+    }
+}
+
+/*
+ * Main translation function
+ */
+void translator_convert(const Xbox360Report* xbox, OrbisPadData* ds4, const TranslatorConfig* config) {
+    // Use default config if none provided
+    TranslatorConfig default_config;
+    if (!config) {
+        translator_init(&default_config);
+        config = &default_config;
+    }
+
+    // Clear output structure
+    memset(ds4, 0, sizeof(OrbisPadData));
+
+    // Get combined Xbox button state
+    uint16_t xbox_buttons = xbox360_get_buttons(xbox);
+
+    // ========================================
+    // ANALOG STICKS (using OpenOrbis 'stick' struct)
+    // ========================================
+
+    uint8_t lx = convert_stick_value(xbox->left_stick_x);
+    uint8_t ly = convert_stick_value(xbox->left_stick_y);
+    uint8_t rx = convert_stick_value(xbox->right_stick_x);
+    uint8_t ry = convert_stick_value(xbox->right_stick_y);
+
+    // Apply Y-axis inversion
+    if (config->invert_left_y) {
+        ly = 255 - ly;
+    }
+    if (config->invert_right_y) {
+        ry = 255 - ry;
+    }
+
+    // Apply deadzone
+    if (config->stick_deadzone > 0) {
+        lx = translator_apply_deadzone(lx, config->stick_deadzone);
+        ly = translator_apply_deadzone(ly, config->stick_deadzone);
+        rx = translator_apply_deadzone(rx, config->stick_deadzone);
+        ry = translator_apply_deadzone(ry, config->stick_deadzone);
+    }
+
+    ds4->leftStick.x = lx;
+    ds4->leftStick.y = ly;
+    ds4->rightStick.x = rx;
+    ds4->rightStick.y = ry;
+
+    // ========================================
+    // ANALOG TRIGGERS (using OpenOrbis 'analog' struct)
+    // ========================================
+
+    ds4->analogButtons.l2 = xbox->left_trigger;
+    ds4->analogButtons.r2 = xbox->right_trigger;
+
+    // ========================================
+    // DIGITAL BUTTONS
+    // ========================================
+
+    uint32_t ds4_buttons = 0;
+
+    // Face buttons with optional swap
+    if (config->swap_ab) {
+        if (xbox_buttons & XBOX360_BTN_A) ds4_buttons |= DS4_BUTTON_CIRCLE;
+        if (xbox_buttons & XBOX360_BTN_B) ds4_buttons |= DS4_BUTTON_CROSS;
+    } else {
+        if (xbox_buttons & XBOX360_BTN_A) ds4_buttons |= DS4_BUTTON_CROSS;
+        if (xbox_buttons & XBOX360_BTN_B) ds4_buttons |= DS4_BUTTON_CIRCLE;
+    }
+
+    if (config->swap_xy) {
+        if (xbox_buttons & XBOX360_BTN_X) ds4_buttons |= DS4_BUTTON_TRIANGLE;
+        if (xbox_buttons & XBOX360_BTN_Y) ds4_buttons |= DS4_BUTTON_SQUARE;
+    } else {
+        if (xbox_buttons & XBOX360_BTN_X) ds4_buttons |= DS4_BUTTON_SQUARE;
+        if (xbox_buttons & XBOX360_BTN_Y) ds4_buttons |= DS4_BUTTON_TRIANGLE;
+    }
+
+    // Shoulder buttons
+    if (xbox_buttons & XBOX360_BTN_LB) ds4_buttons |= DS4_BUTTON_L1;
+    if (xbox_buttons & XBOX360_BTN_RB) ds4_buttons |= DS4_BUTTON_R1;
+
+    // Digital trigger buttons
+    if (xbox->left_trigger >= config->trigger_threshold) {
+        ds4_buttons |= DS4_BUTTON_L2;
+    }
+    if (xbox->right_trigger >= config->trigger_threshold) {
+        ds4_buttons |= DS4_BUTTON_R2;
+    }
+
+    // Stick click buttons
+    if (xbox_buttons & XBOX360_BTN_L3) ds4_buttons |= DS4_BUTTON_L3;
+    if (xbox_buttons & XBOX360_BTN_R3) ds4_buttons |= DS4_BUTTON_R3;
+
+    // Menu buttons
+    if (xbox_buttons & XBOX360_BTN_START) ds4_buttons |= DS4_BUTTON_OPTIONS;
+    if (xbox_buttons & XBOX360_BTN_BACK)  ds4_buttons |= DS4_BUTTON_SHARE;
+
+    // Guide button -> PS button
+    if (xbox_buttons & XBOX360_BTN_GUIDE) ds4_buttons |= DS4_BUTTON_PS;
+
+    // ========================================
+    // D-PAD
+    // ========================================
+
+    uint8_t xbox_dpad = xbox360_get_dpad(xbox);
+    ds4_buttons |= dpad_bits_to_buttons(xbox_dpad);
+
+    // Store final button state
+    ds4->buttons = ds4_buttons;
+
+    // ========================================
+    // STATUS & METADATA
+    // ========================================
+
+    ds4->connected = 1;
+    ds4->timestamp = s_timestamp++;
+
+    // Motion data - set to neutral
+    ds4->quat.x = 0.0f;
+    ds4->quat.y = 0.0f;
+    ds4->quat.z = 0.0f;
+    ds4->quat.w = 1.0f;
+
+    ds4->vel.x = 0.0f;
+    ds4->vel.y = 0.0f;
+    ds4->vel.z = 0.0f;
+
+    ds4->acell.x = 0.0f;
+    ds4->acell.y = 0.0f;
+    ds4->acell.z = 1.0f;  // 1g downward
+
+    // Touchpad - no touches
+    ds4->touch.fingers = 0;
+}
+
+/*
+ * Simple wrapper for translation with default config
+ */
+void xbox360_to_ds4(const Xbox360Report* xbox, OrbisPadData* ds4) {
+    translator_convert(xbox, ds4, NULL);
+}
