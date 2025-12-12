@@ -12,6 +12,8 @@ Xbox controllers work as Player 2 in local multiplayer games! DS4 remains Player
 - **Xbox Series X|S** wired USB controller
 - Xbox Elite controllers (wired)
 
+**Note for Xbox One/Series controllers:** The controller must be **off** (Xbox button not lit) when launching the game. The plugin will detect and initialize it. If the controller is already on, unplug and replug it, or turn it off before starting the game.
+
 ### What Works
 - Full button mapping (A/B/X/Y, bumpers, triggers, sticks, D-pad)
 - Responsive input (1ms polling, 2ms timeout)
