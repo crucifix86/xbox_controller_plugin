@@ -36,7 +36,16 @@ static void notify(const char* message) {
 int32_t attr_public plugin_load(int32_t argc, const char* argv[]) {
     (void)argc;
     (void)argv;
-    hooks_install();
+
+    // Initialize USB first (non-fatal if fails - just no Xbox support)
+    hooks_init_usb();
+
+    // Install hooks - if this fails, plugin won't work but shouldn't crash
+    if (hooks_install() < 0) {
+        notify("Xbox: Hook install failed");
+        return -1;  // Tell GoldHEN to unload us
+    }
+
     return 0;
 }
 

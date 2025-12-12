@@ -7,6 +7,13 @@
 #define HOOKS_H
 
 /*
+ * Initialize USB subsystem for Xbox controller
+ * Call ONCE from plugin_load, before hooks_install
+ * @return 0 on success, negative on error (non-fatal)
+ */
+int hooks_init_usb(void);
+
+/*
  * Install all scePad hooks
  * @return 0 on success, negative on error
  */
