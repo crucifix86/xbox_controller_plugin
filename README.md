@@ -48,9 +48,7 @@ For local multiplayer to work:
 4. You should see "Xbox 360 connected!" and "Xbox Player 2 ready!" notifications
 5. Both controllers now work independently!
 
-**Important**: Both users must be logged in at the PS4 system level. The plugin injects the Xbox controller as the second user's controller.
-
-**Note**: The second user ID is currently hardcoded. If multiplayer doesn't work, check `/user/home/` via FTP and update `XBOX_VIRTUAL_USER_ID` in `src/hooks.c` with your second profile's hex ID.
+**Important**: Both users must be logged in at the PS4 system level. The plugin automatically detects and assigns the Xbox controller to the second user.
 
 ## Button Mapping
 
@@ -77,7 +75,6 @@ For local multiplayer to work:
 - No lightbar feedback
 - No controller audio
 - Requires DS4 for system menu
-- Second user ID is hardcoded (may need manual configuration)
 
 ## Building
 
