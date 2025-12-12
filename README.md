@@ -107,6 +107,28 @@ This plugin hooks multiple PS4 system functions:
 - Reads Xbox controller via `sceUsbd` USB API
 - Translates Xbox HID reports to DS4 OrbisPadData format
 
+## Roadmap
+
+### PSN Spoof for Local Multiplayer (Planned)
+
+Some games (like Minecraft Bedrock) require PSN sign-in for local multiplayer even though no online features are used. A future update will add PSN availability spoofing.
+
+**Target functions to hook (from `libSceNpManager`):**
+- `sceNpCheckNpAvailability()` - Check if PSN is available
+- `sceNpCheckNpAvailabilityA(userId)` - Async version with user ID
+- `sceNpGetState()` - Get current PSN state
+- `sceNpHasSignedUp()` - Check if user has PSN account
+- `sceNpManagerIntGetSigninState()` - Internal sign-in state
+
+**Approach:**
+1. Load `libSceNpManager.sprx`
+2. Hook availability/state functions to return "signed in" status
+3. May need to fake account data (OnlineId, AccountId) for some games
+
+**Reference:**
+- [PS4 Offline Account Activator](https://www.psxhax.com/threads/ps4offlineaccountactivator-ps4-offline-account-activator-gui-by-charlyzard-barthen.7347/) - Activates accounts offline (save data only)
+- Some games have community patches that remove PSN checks entirely
+
 ## License
 
 MIT License
