@@ -84,6 +84,7 @@ LIBS += -lkernel
 LIBS += -lScePad
 LIBS += -lSceUsbd
 LIBS += -lSceSysmodule
+LIBS += -lSceUserService
 
 # ============================================
 # Build Rules

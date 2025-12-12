@@ -2,35 +2,26 @@
 
 A GoldHEN plugin that enables Xbox 360 USB controllers on jailbroken PS4 consoles.
 
-## ⚠️ BETA SOFTWARE - USE AT YOUR OWN RISK ⚠️
+## Status: WORKING (Single Player + Local Multiplayer)
 
-**This plugin is experimental and may cause instability.** During development it caused jailbreak issues requiring multiple reboots. Back up your data before using.
-
-## Status: WORKING (Single Player)
-
-Single player mode tested and functional. The Xbox 360 controller successfully controls games on PS4!
+Xbox 360 controller works as Player 2 in local multiplayer games! DS4 remains Player 1.
 
 ### What Works
 - Xbox 360 wired USB controller detection
 - Full button mapping (A/B/X/Y, bumpers, triggers, sticks, D-pad)
 - Responsive input (1ms polling, 2ms timeout)
-- Replaces DS4 input in games
+- **Local multiplayer** - Xbox controller as Player 2, DS4 as Player 1
 
 ### Not Supported
-- Multiplayer / multiple controllers
 - Rumble/vibration output
-
-### Known Issues
-- May cause jailbreak instability with repeated loading/unloading
-- Some homebrew apps may not launch while plugin is active
-- Aggressive polling settings can cause black screen crashes
+- Wireless Xbox controllers
 
 ## Requirements
 
 - Jailbroken PS4 (tested on 9.00)
 - GoldHEN 2.3 or newer
 - Xbox 360 **wired** USB controller
-- A real DS4 controller (for system menu and launching games)
+- A real DS4 controller (for system menu and Player 1)
 
 ## Installation
 
@@ -45,12 +36,21 @@ Single player mode tested and functional. The Xbox 360 controller successfully c
 
 To disable: Remove the plugin line from `plugins.ini`
 
-## Usage
+## Multiplayer Setup
 
-1. Connect Xbox 360 controller via USB
-2. Launch game with DS4
-3. You should see "Xbox 360 connected!" notification
-4. Xbox controller input will work in-game!
+For local multiplayer to work:
+
+1. **Create a second PS4 user profile** (Settings > Users > Create User)
+2. **Log in both users** before launching the game:
+   - Your main profile (Player 1 - DS4)
+   - Second profile (Player 2 - Xbox controller)
+3. Launch the game
+4. You should see "Xbox 360 connected!" and "Xbox Player 2 ready!" notifications
+5. Both controllers now work independently!
+
+**Important**: Both users must be logged in at the PS4 system level. The plugin injects the Xbox controller as the second user's controller.
+
+**Note**: The second user ID is currently hardcoded. If multiplayer doesn't work, check `/user/home/` via FTP and update `XBOX_VIRTUAL_USER_ID` in `src/hooks.c` with your second profile's hex ID.
 
 ## Button Mapping
 
@@ -77,6 +77,7 @@ To disable: Remove the plugin line from `plugins.ini`
 - No lightbar feedback
 - No controller audio
 - Requires DS4 for system menu
+- Second user ID is hardcoded (may need manual configuration)
 
 ## Building
 
@@ -93,11 +94,13 @@ Output: `bin/xbox_controller.prx`
 
 ## Technical Details
 
-This plugin uses the gamepad_helper hooking technique:
-- Hooks scePadRead and scePadReadState
-- Reads Xbox controller via sceUsbd
+This plugin hooks multiple PS4 system functions:
+- `scePadOpen` / `scePadClose` - Virtual controller registration
+- `scePadRead` / `scePadReadState` - Input injection
+- `scePadGetControllerInformation` - Controller status
+- `sceUserServiceGetLoginUserIdList` - User injection for multiplayer
+- Reads Xbox controller via `sceUsbd` USB API
 - Translates Xbox HID reports to DS4 OrbisPadData format
-- Injects translated input into the game's pad reading
 
 ## License
 
@@ -107,3 +110,4 @@ MIT License
 
 - GoldHEN team for the plugin SDK and gamepad_helper reference
 - OpenOrbis team for the PS4 toolchain
+- remotePad plugin for virtual controller architecture inspiration
