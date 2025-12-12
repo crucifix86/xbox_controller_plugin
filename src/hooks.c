@@ -10,6 +10,7 @@
 #include "config.h"
 #include "translator.h"
 #include "xbox360.h"
+#include "xboxone.h"
 #include "usb_xbox.h"
 
 #include <stdint.h>
@@ -68,9 +69,53 @@ static int g_user_prx_loaded = 0;
 // Virtual controller state
 static int g_virtual_pad_open = 0;      // Is our virtual pad currently open?
 static int g_xbox_connected = 0;        // Is Xbox controller physically connected?
+static ControllerType g_controller_type = CONTROLLER_NONE;  // Which controller type
 
 // USB device handle for Xbox controller
 static libusb_device_handle* g_xbox_handle = NULL;
+
+// Xbox controller VID (Microsoft)
+#define XBOX_VID 0x045E
+
+// Xbox 360 PIDs
+#define XBOX360_PID 0x028E
+
+// Xbox One PIDs (multiple variants)
+static const uint16_t XBOXONE_PIDS[] = {
+    0x02D1,  // Original Xbox One controller
+    0x02DD,  // Xbox One controller (newer)
+    0x02E3,  // Xbox Elite controller
+    0x02EA,  // Xbox One S controller
+    0x0B00,  // Xbox Elite 2 controller
+    0x0B12,  // Xbox Series X|S controller (USB)
+    0x0B20,  // 2021 Xbox controller
+};
+#define XBOXONE_PID_COUNT (sizeof(XBOXONE_PIDS) / sizeof(XBOXONE_PIDS[0]))
+
+// Check if PID is an Xbox One controller
+static int is_xboxone_pid(uint16_t pid) {
+    for (size_t i = 0; i < XBOXONE_PID_COUNT; i++) {
+        if (XBOXONE_PIDS[i] == pid) return 1;
+    }
+    return 0;
+}
+
+// Xbox One initialization command - must be sent to start input reports
+static const uint8_t XBOXONE_INIT_CMD[] = { 0x05, 0x20, 0x00, 0x01, 0x00 };
+
+// Send initialization command to Xbox One controller
+static int xboxone_send_init(libusb_device_handle* handle) {
+    int32_t transferred = 0;
+    // Send to OUT endpoint (0x02 for Xbox One/Series)
+    return sceUsbdInterruptTransfer(
+        handle,
+        0x02,  // EP2 OUT
+        (unsigned char*)XBOXONE_INIT_CMD,
+        sizeof(XBOXONE_INIT_CMD),
+        &transferred,
+        100  // 100ms timeout
+    );
+}
 
 static void hook_notify(const char* message) {
     OrbisNotificationRequest req;
@@ -103,7 +148,7 @@ int hooks_init_usb(void) {
     }
     g_usb_initialized = 1;
 
-    // Scan for Xbox 360 controller
+    // Scan for Xbox controllers (360 and One)
     libusb_device** dev_list = NULL;
     int32_t dev_count = sceUsbdGetDeviceList(&dev_list);
     if (dev_count <= 0 || dev_list == NULL) {
@@ -111,22 +156,50 @@ int hooks_init_usb(void) {
         return 0;
     }
 
-    // Look for Xbox 360 controller (VID 0x045E, PID 0x028E)
+    // Look for Xbox controllers (VID 0x045E)
     for (int i = 0; i < dev_count; i++) {
         struct libusb_device_descriptor desc;
         if (sceUsbdGetDeviceDescriptor(dev_list[i], &desc) == 0) {
-            if (desc.idVendor == 0x045E && desc.idProduct == 0x028E) {
-                ret = sceUsbdOpen(dev_list[i], &g_xbox_handle);
-                if (ret == 0 && g_xbox_handle != NULL) {
-                    ret = sceUsbdClaimInterface(g_xbox_handle, 0);
-                    if (ret == 0) {
-                        g_xbox_connected = 1;
-                        hook_notify("Xbox 360 connected!");
-                        sceUsbdFreeDeviceList(dev_list);
-                        return 0;
+            if (desc.idVendor == XBOX_VID) {
+                ControllerType detected_type = CONTROLLER_NONE;
+                const char* controller_name = NULL;
+
+                // Check Xbox 360
+                if (desc.idProduct == XBOX360_PID) {
+                    detected_type = CONTROLLER_XBOX360;
+                    controller_name = "Xbox 360 connected!";
+                }
+                // Check Xbox One variants
+                else if (is_xboxone_pid(desc.idProduct)) {
+                    detected_type = CONTROLLER_XBOXONE;
+                    controller_name = "Xbox One connected!";
+                }
+
+                if (detected_type != CONTROLLER_NONE) {
+                    ret = sceUsbdOpen(dev_list[i], &g_xbox_handle);
+                    if (ret == 0 && g_xbox_handle != NULL) {
+                        // Try to detach kernel driver if attached
+                        sceUsbdDetachKernelDriver(g_xbox_handle, 0);
+
+                        ret = sceUsbdClaimInterface(g_xbox_handle, 0);
+                        if (ret == 0) {
+                            g_xbox_connected = 1;
+                            g_controller_type = detected_type;
+
+                            // Xbox One needs init command to start sending input
+                            if (detected_type == CONTROLLER_XBOXONE) {
+                                // Set alternate interface setting 0
+                                sceUsbdSetInterfaceAltSetting(g_xbox_handle, 0, 0);
+                                xboxone_send_init(g_xbox_handle);
+                            }
+
+                            hook_notify(controller_name);
+                            sceUsbdFreeDeviceList(dev_list);
+                            return 0;
+                        }
+                        sceUsbdClose(g_xbox_handle);
+                        g_xbox_handle = NULL;
                     }
-                    sceUsbdClose(g_xbox_handle);
-                    g_xbox_handle = NULL;
                 }
             }
         }
@@ -160,8 +233,12 @@ int hooks_detect_second_user(void) {
     return -1;
 }
 
-// Cached Xbox report - updated by polling, read by hooks
-static Xbox360Report g_cached_xbox_report;
+// Cached Xbox reports - updated by polling, read by hooks
+static union {
+    Xbox360Report xbox360;
+    XboxOneReport xboxone;
+    uint8_t raw[64];  // Large enough for any report
+} g_cached_xbox_report;
 static volatile int g_has_xbox_data = 0;
 static uint64_t g_last_read_time = 0;
 static int g_xbox_active = 0;
@@ -170,7 +247,7 @@ static int g_xbox_active = 0;
 // STABILITY: No initialization here - just read if connected
 static void inject_xbox_input(OrbisPadData* pData) {
     // Only try to read if Xbox handle is valid (set during plugin_load)
-    if (g_xbox_handle == NULL) {
+    if (g_xbox_handle == NULL || g_controller_type == CONTROLLER_NONE) {
         return;  // No Xbox connected, pass through DS4 data unchanged
     }
 
@@ -180,32 +257,53 @@ static void inject_xbox_input(OrbisPadData* pData) {
     if (now - g_last_read_time > 1000) {
         g_last_read_time = now;
 
-        Xbox360Report xbox_report;
         int32_t transferred = 0;
 
-        // Read from interrupt endpoint (0x81 = EP1 IN)
+        // Read from interrupt endpoint
+        // Xbox 360: EP1 IN (0x81), Xbox One/Series: EP2 IN (0x82)
+        uint8_t in_endpoint = (g_controller_type == CONTROLLER_XBOXONE) ? 0x82 : 0x81;
+
         int ret = sceUsbdInterruptTransfer(
             g_xbox_handle,
-            0x81,
-            (unsigned char*)&xbox_report,
-            sizeof(xbox_report),
+            in_endpoint,
+            g_cached_xbox_report.raw,
+            sizeof(g_cached_xbox_report.raw),
             &transferred,
             2  // 2ms timeout
         );
 
-        if (ret == 0 && transferred >= 20) {
-            if (!g_xbox_active) {
-                g_xbox_active = 1;
-                hook_notify("Xbox input active!");
+        if (ret == 0) {
+            int valid_report = 0;
+
+            if (g_controller_type == CONTROLLER_XBOX360 && transferred >= 20) {
+                // Xbox 360: msg_type=0x00, msg_length=0x14
+                if (g_cached_xbox_report.xbox360.msg_type == 0x00) {
+                    valid_report = 1;
+                }
+            } else if (g_controller_type == CONTROLLER_XBOXONE && transferred >= 18) {
+                // Xbox One: report_type=0x20 for input
+                if (g_cached_xbox_report.xboxone.report_type == XBOXONE_REPORT_INPUT) {
+                    valid_report = 1;
+                }
             }
-            g_cached_xbox_report = xbox_report;
-            g_has_xbox_data = 1;
+
+            if (valid_report) {
+                if (!g_xbox_active) {
+                    g_xbox_active = 1;
+                    hook_notify("Xbox input active!");
+                }
+                g_has_xbox_data = 1;
+            }
         }
     }
 
-    // Use cached data for translation
+    // Use cached data for translation based on controller type
     if (g_has_xbox_data) {
-        xbox360_to_ds4(&g_cached_xbox_report, pData);
+        if (g_controller_type == CONTROLLER_XBOX360) {
+            xbox360_to_ds4(&g_cached_xbox_report.xbox360, pData);
+        } else if (g_controller_type == CONTROLLER_XBOXONE) {
+            xboxone_to_ds4(&g_cached_xbox_report.xboxone, pData);
+        }
     }
 }
 
@@ -462,6 +560,7 @@ void hooks_remove(void) {
     g_xbox_active = 0;
     g_xbox_connected = 0;
     g_virtual_pad_open = 0;
+    g_controller_type = CONTROLLER_NONE;
 }
 
 int hooks_is_virtual_handle(int handle) {

@@ -1,13 +1,24 @@
 /*
- * Xbox 360 to DualShock 4 Input Translator
+ * Xbox Controller to DualShock 4 Input Translator
+ * Supports Xbox 360 and Xbox One controllers
  */
 
 #ifndef TRANSLATOR_H
 #define TRANSLATOR_H
 
 #include "xbox360.h"
+#include "xboxone.h"
 #include "ds4.h"
 #include "config.h"
+
+/*
+ * Controller type enumeration
+ */
+typedef enum {
+    CONTROLLER_NONE = 0,
+    CONTROLLER_XBOX360,
+    CONTROLLER_XBOXONE
+} ControllerType;
 
 /*
  * Translator configuration
@@ -45,8 +56,22 @@ void translator_convert(const Xbox360Report* xbox, OrbisPadData* ds4, const Tran
 uint8_t translator_apply_deadzone(uint8_t value, uint8_t deadzone);
 
 /*
- * Simple wrapper - translate Xbox report to DS4 format using defaults
+ * Simple wrapper - translate Xbox 360 report to DS4 format using defaults
  */
 void xbox360_to_ds4(const Xbox360Report* xbox, OrbisPadData* ds4);
+
+/*
+ * Translate Xbox One report to OrbisPadData
+ *
+ * @param xbox      Input Xbox One report
+ * @param ds4       Output OrbisPadData structure
+ * @param config    Translator configuration (or NULL for defaults)
+ */
+void translator_convert_xboxone(const XboxOneReport* xbox, OrbisPadData* ds4, const TranslatorConfig* config);
+
+/*
+ * Simple wrapper - translate Xbox One report to DS4 format using defaults
+ */
+void xboxone_to_ds4(const XboxOneReport* xbox, OrbisPadData* ds4);
 
 #endif // TRANSLATOR_H

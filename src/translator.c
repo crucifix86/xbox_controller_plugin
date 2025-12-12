@@ -198,3 +198,143 @@ void translator_convert(const Xbox360Report* xbox, OrbisPadData* ds4, const Tran
 void xbox360_to_ds4(const Xbox360Report* xbox, OrbisPadData* ds4) {
     translator_convert(xbox, ds4, NULL);
 }
+
+/*
+ * Xbox One translation function
+ */
+void translator_convert_xboxone(const XboxOneReport* xbox, OrbisPadData* ds4, const TranslatorConfig* config) {
+    // Use default config if none provided
+    TranslatorConfig default_config;
+    if (!config) {
+        translator_init(&default_config);
+        config = &default_config;
+    }
+
+    // Clear output structure
+    memset(ds4, 0, sizeof(OrbisPadData));
+
+    // ========================================
+    // ANALOG STICKS (same format as Xbox 360)
+    // ========================================
+
+    uint8_t lx = convert_stick_value(xbox->left_stick_x);
+    uint8_t ly = convert_stick_value(xbox->left_stick_y);
+    uint8_t rx = convert_stick_value(xbox->right_stick_x);
+    uint8_t ry = convert_stick_value(xbox->right_stick_y);
+
+    // Apply Y-axis inversion
+    if (config->invert_left_y) {
+        ly = 255 - ly;
+    }
+    if (config->invert_right_y) {
+        ry = 255 - ry;
+    }
+
+    // Apply deadzone
+    if (config->stick_deadzone > 0) {
+        lx = translator_apply_deadzone(lx, config->stick_deadzone);
+        ly = translator_apply_deadzone(ly, config->stick_deadzone);
+        rx = translator_apply_deadzone(rx, config->stick_deadzone);
+        ry = translator_apply_deadzone(ry, config->stick_deadzone);
+    }
+
+    ds4->leftStick.x = lx;
+    ds4->leftStick.y = ly;
+    ds4->rightStick.x = rx;
+    ds4->rightStick.y = ry;
+
+    // ========================================
+    // ANALOG TRIGGERS (Xbox One uses 10-bit, convert to 8-bit)
+    // ========================================
+
+    ds4->analogButtons.l2 = xboxone_trigger_to_8bit(xbox->left_trigger);
+    ds4->analogButtons.r2 = xboxone_trigger_to_8bit(xbox->right_trigger);
+
+    // ========================================
+    // DIGITAL BUTTONS
+    // ========================================
+
+    uint32_t ds4_buttons = 0;
+
+    // Face buttons (Xbox One layout: A/B/X/Y in buttons_low)
+    if (config->swap_ab) {
+        if (xbox->buttons_low & XBOXONE_A) ds4_buttons |= DS4_BUTTON_CIRCLE;
+        if (xbox->buttons_low & XBOXONE_B) ds4_buttons |= DS4_BUTTON_CROSS;
+    } else {
+        if (xbox->buttons_low & XBOXONE_A) ds4_buttons |= DS4_BUTTON_CROSS;
+        if (xbox->buttons_low & XBOXONE_B) ds4_buttons |= DS4_BUTTON_CIRCLE;
+    }
+
+    if (config->swap_xy) {
+        if (xbox->buttons_low & XBOXONE_X) ds4_buttons |= DS4_BUTTON_TRIANGLE;
+        if (xbox->buttons_low & XBOXONE_Y) ds4_buttons |= DS4_BUTTON_SQUARE;
+    } else {
+        if (xbox->buttons_low & XBOXONE_X) ds4_buttons |= DS4_BUTTON_SQUARE;
+        if (xbox->buttons_low & XBOXONE_Y) ds4_buttons |= DS4_BUTTON_TRIANGLE;
+    }
+
+    // Shoulder buttons (in buttons_high)
+    if (xbox->buttons_high & XBOXONE_LB) ds4_buttons |= DS4_BUTTON_L1;
+    if (xbox->buttons_high & XBOXONE_RB) ds4_buttons |= DS4_BUTTON_R1;
+
+    // Digital trigger buttons (use 8-bit converted value)
+    uint8_t lt = xboxone_trigger_to_8bit(xbox->left_trigger);
+    uint8_t rt = xboxone_trigger_to_8bit(xbox->right_trigger);
+    if (lt >= config->trigger_threshold) {
+        ds4_buttons |= DS4_BUTTON_L2;
+    }
+    if (rt >= config->trigger_threshold) {
+        ds4_buttons |= DS4_BUTTON_R2;
+    }
+
+    // Stick click buttons (in buttons_high)
+    if (xbox->buttons_high & XBOXONE_LEFT_STICK)  ds4_buttons |= DS4_BUTTON_L3;
+    if (xbox->buttons_high & XBOXONE_RIGHT_STICK) ds4_buttons |= DS4_BUTTON_R3;
+
+    // Menu buttons (in buttons_low)
+    if (xbox->buttons_low & XBOXONE_MENU) ds4_buttons |= DS4_BUTTON_OPTIONS;
+    if (xbox->buttons_low & XBOXONE_VIEW) ds4_buttons |= DS4_BUTTON_SHARE;
+
+    // Note: Xbox/Guide button comes in separate report (0x07), not handled here
+
+    // ========================================
+    // D-PAD (in buttons_high, same bit layout as Xbox 360)
+    // ========================================
+
+    uint8_t xbox_dpad = xboxone_get_dpad(xbox);
+    ds4_buttons |= dpad_bits_to_buttons(xbox_dpad);
+
+    // Store final button state
+    ds4->buttons = ds4_buttons;
+
+    // ========================================
+    // STATUS & METADATA
+    // ========================================
+
+    ds4->connected = 1;
+    ds4->timestamp = s_timestamp++;
+
+    // Motion data - set to neutral
+    ds4->quat.x = 0.0f;
+    ds4->quat.y = 0.0f;
+    ds4->quat.z = 0.0f;
+    ds4->quat.w = 1.0f;
+
+    ds4->vel.x = 0.0f;
+    ds4->vel.y = 0.0f;
+    ds4->vel.z = 0.0f;
+
+    ds4->acell.x = 0.0f;
+    ds4->acell.y = 0.0f;
+    ds4->acell.z = 1.0f;  // 1g downward
+
+    // Touchpad - no touches
+    ds4->touch.fingers = 0;
+}
+
+/*
+ * Simple wrapper for Xbox One translation with default config
+ */
+void xboxone_to_ds4(const XboxOneReport* xbox, OrbisPadData* ds4) {
+    translator_convert_xboxone(xbox, ds4, NULL);
+}

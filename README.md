@@ -1,26 +1,32 @@
 # Xbox Controller Plugin for PS4
 
-A GoldHEN plugin that enables Xbox 360 USB controllers on jailbroken PS4 consoles.
+A GoldHEN plugin that enables Xbox USB controllers on jailbroken PS4 consoles.
 
 ## Status: WORKING (Single Player + Local Multiplayer)
 
-Xbox 360 controller works as Player 2 in local multiplayer games! DS4 remains Player 1.
+Xbox controllers work as Player 2 in local multiplayer games! DS4 remains Player 1.
+
+### Supported Controllers
+- **Xbox 360** wired USB controller
+- **Xbox One** wired USB controller
+- **Xbox Series X|S** wired USB controller
+- Xbox Elite controllers (wired)
 
 ### What Works
-- Xbox 360 wired USB controller detection
 - Full button mapping (A/B/X/Y, bumpers, triggers, sticks, D-pad)
 - Responsive input (1ms polling, 2ms timeout)
 - **Local multiplayer** - Xbox controller as Player 2, DS4 as Player 1
+- Auto-detection of controller type
 
 ### Not Supported
 - Rumble/vibration output
-- Wireless Xbox controllers
+- Wireless/Bluetooth Xbox controllers
 
 ## Requirements
 
 - Jailbroken PS4 (tested on 9.00)
 - GoldHEN 2.3 or newer
-- Xbox 360 **wired** USB controller
+- Xbox **wired** USB controller (360, One, or Series X|S)
 - A real DS4 controller (for system menu and Player 1)
 
 ## Installation
