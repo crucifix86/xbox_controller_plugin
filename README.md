@@ -141,6 +141,10 @@ Some games (like Minecraft Bedrock) require PSN sign-in for local multiplayer ev
 
 MIT License
 
+## Contact
+
+Discord: **sinfulstoic**
+
 ## Credits
 
 - GoldHEN team for the plugin SDK and gamepad_helper reference
