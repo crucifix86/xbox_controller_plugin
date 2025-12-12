@@ -50,6 +50,14 @@ For local multiplayer to work:
 
 **Important**: Both users must be logged in at the PS4 system level. The plugin automatically detects and assigns the Xbox controller to the second user.
 
+### Drop-in Games (Diablo 3, etc.)
+
+For games where Player 2 joins by pressing Start:
+
+1. **Create your Player 2 character on the second profile first** - Launch the game as the second user and create a character before attempting co-op
+2. The game may freeze if you try to create a new character while joining in-game
+3. Once the character exists, you can drop in normally by pressing Start on the Xbox controller
+
 ## Button Mapping
 
 | Xbox 360 | DualShock 4 |
