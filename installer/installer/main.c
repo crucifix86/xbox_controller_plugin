@@ -240,23 +240,18 @@ int main(void) {
         notify("Installing Xbox Controller...");
         sceKernelUsleep(1000000);
 
-        // Copy PRX if not present
-        if (!prx_exists) {
-            notify("Copying plugin file...");
-            sceKernelUsleep(500000);
+        // Always copy PRX (overwrite if exists)
+        notify("Copying plugin file...");
+        sceKernelUsleep(500000);
 
-            int ret = copy_file("/app0/assets/xbox_controller.prx", PLUGIN_PATH);
-            if (ret < 0) {
-                char msg[64];
-                snprintf(msg, sizeof(msg), "Copy failed! Error: %d", ret);
-                notify(msg);
-                sceKernelUsleep(5000000);
-            } else {
-                notify("Plugin file copied OK!");
-                sceKernelUsleep(1000000);
-            }
+        int ret = copy_file("/app0/assets/xbox_controller.prx", PLUGIN_PATH);
+        if (ret < 0) {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "Copy failed! Error: %d", ret);
+            notify(msg);
+            sceKernelUsleep(5000000);
         } else {
-            notify("Plugin file exists, skipping copy");
+            notify("Plugin file copied OK!");
             sceKernelUsleep(1000000);
         }
 
