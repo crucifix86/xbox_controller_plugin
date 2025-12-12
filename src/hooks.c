@@ -34,10 +34,11 @@ extern int32_t scePadReadStateExt(int32_t handle, OrbisPadData* pData);
 extern int sys_dynlib_load_prx(const char* path, int* handle);
 extern const char* sceKernelGetFsSandboxRandomWord(void);
 
-// Virtual user/controller constants
-// Use real PS4 user ID for Player 2 (from /user/home/ directory)
-#define XBOX_VIRTUAL_USER_ID    0x13be5cb8  // Second PS4 user profile
+// Virtual controller constants
 #define XBOX_VIRTUAL_PAD_HANDLE 1001        // Our fake pad handle
+
+// Auto-detected user ID for Player 2 (set during init)
+static int32_t g_xbox_user_id = 0;
 
 // Function pointer types for HOOK_CONTINUE
 typedef int32_t (*scePadOpen_t)(int32_t, int32_t, int32_t, void*);
@@ -135,6 +136,30 @@ int hooks_init_usb(void) {
     return 0;  // USB init succeeded even if no Xbox found
 }
 
+// Cached foreground user ID (Player 1)
+static int32_t g_foreground_user_id = 0;
+
+// Get the foreground user (lazy, cached)
+static int32_t get_foreground_user(void) {
+    if (g_foreground_user_id == 0) {
+        sceUserServiceGetForegroundUser(&g_foreground_user_id);
+    }
+    return g_foreground_user_id;
+}
+
+// Auto-detect second user for Player 2
+// Called lazily when scePadOpen is called for a non-foreground user
+int hooks_detect_second_user(void) {
+    // Just cache the foreground user at init time
+    int32_t fg = 0;
+    int32_t ret = sceUserServiceGetForegroundUser(&fg);
+    if (ret == 0 && fg != 0) {
+        g_foreground_user_id = fg;
+        return 0;
+    }
+    return -1;
+}
+
 // Cached Xbox report - updated by polling, read by hooks
 static Xbox360Report g_cached_xbox_report;
 static volatile int g_has_xbox_data = 0;
@@ -195,20 +220,8 @@ int32_t sceUserServiceGetLoginUserIdList_hook(OrbisUserServiceLoginUserIdList* u
         return ret;
     }
 
-    // Only inject if Xbox controller is connected
-    if (!g_xbox_connected) {
-        return ret;
-    }
-
-    // Find an empty slot and inject our virtual user
-    for (int i = 0; i < ORBIS_USER_SERVICE_MAX_LOGIN_USERS; i++) {
-        if (userIdList->userId[i] == ORBIS_USER_SERVICE_USER_ID_INVALID) {
-            userIdList->userId[i] = XBOX_VIRTUAL_USER_ID;
-            hook_notify("Injected Player 2 user");
-            break;
-        }
-    }
-
+    // With auto-detect, we use an already logged-in user
+    // No injection needed - just pass through
     return ret;
 }
 
@@ -217,11 +230,22 @@ int32_t sceUserServiceGetLoginUserIdList_hook(OrbisUserServiceLoginUserIdList* u
 // ============================================
 
 int32_t scePadOpen_hook(int32_t userId, int32_t type, int32_t index, void* param) {
-    // Check if this is for our virtual user
-    if (userId == XBOX_VIRTUAL_USER_ID && g_xbox_connected) {
-        g_virtual_pad_open = 1;
-        hook_notify("Xbox Player 2 ready!");
-        return XBOX_VIRTUAL_PAD_HANDLE;
+    // Dynamic detection: if Xbox is connected and this is NOT the foreground user,
+    // this must be Player 2 - give them the Xbox controller
+    int32_t fg_user = get_foreground_user();
+
+    if (g_xbox_connected && fg_user != 0 && userId != fg_user) {
+        // This is a non-foreground user requesting a controller
+        // Assign Xbox controller to them
+        if (g_xbox_user_id == 0) {
+            g_xbox_user_id = userId;  // Remember this user for future calls
+        }
+
+        if (userId == g_xbox_user_id) {
+            g_virtual_pad_open = 1;
+            hook_notify("Xbox Player 2 ready!");
+            return XBOX_VIRTUAL_PAD_HANDLE;
+        }
     }
 
     // Pass through to real scePadOpen via HOOK_CONTINUE
@@ -232,6 +256,7 @@ int32_t scePadClose_hook(int32_t handle) {
     // Check if closing our virtual pad
     if (handle == XBOX_VIRTUAL_PAD_HANDLE) {
         g_virtual_pad_open = 0;
+        g_xbox_user_id = 0;  // Reset so it can be reassigned
         return 0;
     }
 
@@ -343,14 +368,16 @@ int hooks_install(void) {
     }
     g_pad_prx_loaded = 1;
 
-    // Load libSceUserService for virtual user injection
+    // Load libSceUserService for user detection
     snprintf(module, 256, "/%s/common/lib/%s", sceKernelGetFsSandboxRandomWord(), "libSceUserService.sprx");
     h = 0;
     ret = sys_dynlib_load_prx(module, &h);
     if (ret >= 0 && h != 0) {
         g_user_prx_loaded = 1;
+
+        // Cache the foreground user (Player 1) for later comparison
+        hooks_detect_second_user();
     }
-    // User service is optional - continue even if it fails
 
     // Verify scePadReadExt exists before patching
     if ((uint64_t)scePadReadExt == 0) {
