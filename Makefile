@@ -89,7 +89,7 @@ LIBS += -lSceSysmodule
 # Build Rules
 # ============================================
 
-.PHONY: all clean install dirs sdk installer
+.PHONY: all clean install dirs sdk
 
 all: dirs sdk $(TARGET_PRX)
 	@echo ""
@@ -154,17 +154,6 @@ debug: CFLAGS += -DDEBUG_NOTIFICATIONS=1 -g -O0
 debug: all
 
 # ============================================
-# Build Installer PKG
-# ============================================
-
-installer: $(TARGET_PRX)
-	@echo "Building installer PKG..."
-	@cp $(TARGET_PRX) installer/assets/
-	@cd installer && DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 OO_PS4_TOOLCHAIN=$(OO_PS4_TOOLCHAIN) make
-	@echo ""
-	@echo "Installer PKG built: installer/IV0000-XBOX00001_00-XBOXCTRLINSTALL0.pkg"
-
-# ============================================
 # Help
 # ============================================
 
@@ -172,12 +161,11 @@ help:
 	@echo "Xbox Controller Plugin Build System"
 	@echo ""
 	@echo "Targets:"
-	@echo "  all       - Build the plugin (default)"
-	@echo "  clean     - Remove build artifacts"
-	@echo "  install   - Upload to PS4 via FTP"
-	@echo "  installer - Build installer PKG"
-	@echo "  debug     - Build with debug output"
-	@echo "  help      - Show this help"
+	@echo "  all      - Build the plugin (default)"
+	@echo "  clean    - Remove build artifacts"
+	@echo "  install  - Upload to PS4 via FTP"
+	@echo "  debug    - Build with debug output"
+	@echo "  help     - Show this help"
 	@echo ""
 	@echo "Environment Variables:"
 	@echo "  OO_PS4_TOOLCHAIN  - OpenOrbis path (default: /home/doug/openorbis-toolchain)"

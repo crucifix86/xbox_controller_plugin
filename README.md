@@ -16,9 +16,8 @@ Single player mode tested and functional. The Xbox 360 controller successfully c
 - Responsive input (1ms polling, 2ms timeout)
 - Replaces DS4 input in games
 
-### NOT YET TESTED
-- **Multiplayer** - Theory: Launch game with DS4, then Xbox controller might register as Player 2. Needs testing!
-- Multiple Xbox controllers
+### Not Supported
+- Multiplayer / multiple controllers
 - Rumble/vibration output
 
 ### Known Issues
@@ -35,24 +34,16 @@ Single player mode tested and functional. The Xbox 360 controller successfully c
 
 ## Installation
 
-### Method 1: PKG Toggle App (Recommended)
-
-1. Download the PKG from [Releases](https://github.com/crucifix86/xbox_controller_plugin/releases)
-2. Install via GoldHEN's Package Installer (USB or Remote PKG)
-3. Run "Xbox Controller Toggle" from home screen to **enable**
-4. Run it again to **disable**
-5. Reboot after toggling to apply changes
-
-### Method 2: Manual FTP
-
 1. Connect to PS4 via FTP (port 2121)
 2. Upload `xbox_controller.prx` to `/data/GoldHEN/plugins/`
-3. Add to `/data/GoldHEN/plugins.ini`:
+3. Create or edit `/data/GoldHEN/plugins.ini`:
    ```ini
    [default]
    /data/GoldHEN/plugins/xbox_controller.prx
    ```
-4. Reboot and load GoldHEN
+4. Launch a game - plugin loads automatically
+
+To disable: Remove the plugin line from `plugins.ini`
 
 ## Usage
 
@@ -95,17 +86,10 @@ Requires:
 
 ```bash
 export OO_PS4_TOOLCHAIN=/path/to/openorbis
-
-# Build plugin only
 make
-
-# Build installer PKG
-make installer
 ```
 
-Output:
-- Plugin: `bin/xbox_controller.prx`
-- Installer: `installer/IV0000-XBOX00001_00-XBOXCTRLINSTALL0.pkg`
+Output: `bin/xbox_controller.prx`
 
 ## Technical Details
 
