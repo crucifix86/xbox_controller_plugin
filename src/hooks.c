@@ -11,6 +11,7 @@
 #include "translator.h"
 #include "xbox360.h"
 #include "xboxone.h"
+#include "switch_controller.h"
 #include "usb_xbox.h"
 
 #include <stdint.h>
@@ -77,6 +78,9 @@ static libusb_device_handle* g_xbox_handle = NULL;
 // Xbox controller VID (Microsoft)
 #define XBOX_VID 0x045E
 
+// PDP controller VID (Performance Designed Products)
+#define PDP_VID 0x0E6F
+
 // Xbox 360 PIDs
 #define XBOX360_PID 0x028E
 
@@ -96,6 +100,23 @@ static const uint16_t XBOXONE_PIDS[] = {
 static int is_xboxone_pid(uint16_t pid) {
     for (size_t i = 0; i < XBOXONE_PID_COUNT; i++) {
         if (XBOXONE_PIDS[i] == pid) return 1;
+    }
+    return 0;
+}
+
+// PDP Switch Input-Only controller PIDs
+static const uint16_t PDP_SWITCH_PIDS[] = {
+    0x0187,  // PDP Rock Candy Wired Controller
+    0x0180,  // PDP Faceoff Wired Pro Controller
+    0x0181,  // PDP Faceoff Deluxe Wired Pro Controller
+    0x0185,  // PDP Wired Fight Pad Pro
+};
+#define PDP_SWITCH_PID_COUNT (sizeof(PDP_SWITCH_PIDS) / sizeof(PDP_SWITCH_PIDS[0]))
+
+// Check if PID is a PDP Switch controller
+static int is_pdp_switch_pid(uint16_t pid) {
+    for (size_t i = 0; i < PDP_SWITCH_PID_COUNT; i++) {
+        if (PDP_SWITCH_PIDS[i] == pid) return 1;
     }
     return 0;
 }
@@ -156,14 +177,15 @@ int hooks_init_usb(void) {
         return 0;
     }
 
-    // Look for Xbox controllers (VID 0x045E)
+    // Look for supported controllers
     for (int i = 0; i < dev_count; i++) {
         struct libusb_device_descriptor desc;
         if (sceUsbdGetDeviceDescriptor(dev_list[i], &desc) == 0) {
-            if (desc.idVendor == XBOX_VID) {
-                ControllerType detected_type = CONTROLLER_NONE;
-                const char* controller_name = NULL;
+            ControllerType detected_type = CONTROLLER_NONE;
+            const char* controller_name = NULL;
 
+            // Check Xbox controllers (VID 0x045E)
+            if (desc.idVendor == XBOX_VID) {
                 // Check Xbox 360
                 if (desc.idProduct == XBOX360_PID) {
                     detected_type = CONTROLLER_XBOX360;
@@ -174,32 +196,39 @@ int hooks_init_usb(void) {
                     detected_type = CONTROLLER_XBOXONE;
                     controller_name = "Xbox One connected!";
                 }
+            }
+            // Check PDP Switch controllers (VID 0x0E6F)
+            else if (desc.idVendor == PDP_VID) {
+                if (is_pdp_switch_pid(desc.idProduct)) {
+                    detected_type = CONTROLLER_SWITCH;
+                    controller_name = "Switch controller connected!";
+                }
+            }
 
-                if (detected_type != CONTROLLER_NONE) {
-                    ret = sceUsbdOpen(dev_list[i], &g_xbox_handle);
-                    if (ret == 0 && g_xbox_handle != NULL) {
-                        // Try to detach kernel driver if attached
-                        sceUsbdDetachKernelDriver(g_xbox_handle, 0);
+            if (detected_type != CONTROLLER_NONE) {
+                ret = sceUsbdOpen(dev_list[i], &g_xbox_handle);
+                if (ret == 0 && g_xbox_handle != NULL) {
+                    // Try to detach kernel driver if attached
+                    sceUsbdDetachKernelDriver(g_xbox_handle, 0);
 
-                        ret = sceUsbdClaimInterface(g_xbox_handle, 0);
-                        if (ret == 0) {
-                            g_xbox_connected = 1;
-                            g_controller_type = detected_type;
+                    ret = sceUsbdClaimInterface(g_xbox_handle, 0);
+                    if (ret == 0) {
+                        g_xbox_connected = 1;
+                        g_controller_type = detected_type;
 
-                            // Xbox One needs init command to start sending input
-                            if (detected_type == CONTROLLER_XBOXONE) {
-                                // Set alternate interface setting 0
-                                sceUsbdSetInterfaceAltSetting(g_xbox_handle, 0, 0);
-                                xboxone_send_init(g_xbox_handle);
-                            }
-
-                            hook_notify(controller_name);
-                            sceUsbdFreeDeviceList(dev_list);
-                            return 0;
+                        // Xbox One needs init command to start sending input
+                        if (detected_type == CONTROLLER_XBOXONE) {
+                            // Set alternate interface setting 0
+                            sceUsbdSetInterfaceAltSetting(g_xbox_handle, 0, 0);
+                            xboxone_send_init(g_xbox_handle);
                         }
-                        sceUsbdClose(g_xbox_handle);
-                        g_xbox_handle = NULL;
+
+                        hook_notify(controller_name);
+                        sceUsbdFreeDeviceList(dev_list);
+                        return 0;
                     }
+                    sceUsbdClose(g_xbox_handle);
+                    g_xbox_handle = NULL;
                 }
             }
         }
@@ -233,10 +262,11 @@ int hooks_detect_second_user(void) {
     return -1;
 }
 
-// Cached Xbox reports - updated by polling, read by hooks
+// Cached controller reports - updated by polling, read by hooks
 static union {
     Xbox360Report xbox360;
     XboxOneReport xboxone;
+    SwitchInputOnlyReport switch_report;
     uint8_t raw[64];  // Large enough for any report
 } g_cached_xbox_report;
 static volatile int g_has_xbox_data = 0;
@@ -260,7 +290,7 @@ static void inject_xbox_input(OrbisPadData* pData) {
         int32_t transferred = 0;
 
         // Read from interrupt endpoint
-        // Xbox 360: EP1 IN (0x81), Xbox One/Series: EP2 IN (0x82)
+        // Xbox 360 & Switch: EP1 IN (0x81), Xbox One/Series: EP2 IN (0x82)
         uint8_t in_endpoint = (g_controller_type == CONTROLLER_XBOXONE) ? 0x82 : 0x81;
 
         int ret = sceUsbdInterruptTransfer(
@@ -285,12 +315,15 @@ static void inject_xbox_input(OrbisPadData* pData) {
                 if (g_cached_xbox_report.xboxone.report_type == XBOXONE_REPORT_INPUT) {
                     valid_report = 1;
                 }
+            } else if (g_controller_type == CONTROLLER_SWITCH && transferred >= SWITCH_INPUT_ONLY_REPORT_SIZE) {
+                // Switch Input-Only: 7 bytes, no report ID filtering needed
+                valid_report = 1;
             }
 
             if (valid_report) {
                 if (!g_xbox_active) {
                     g_xbox_active = 1;
-                    hook_notify("Xbox input active!");
+                    hook_notify("Controller input active!");
                 }
                 g_has_xbox_data = 1;
             }
@@ -303,6 +336,8 @@ static void inject_xbox_input(OrbisPadData* pData) {
             xbox360_to_ds4(&g_cached_xbox_report.xbox360, pData);
         } else if (g_controller_type == CONTROLLER_XBOXONE) {
             xboxone_to_ds4(&g_cached_xbox_report.xboxone, pData);
+        } else if (g_controller_type == CONTROLLER_SWITCH) {
+            switch_to_ds4(&g_cached_xbox_report.switch_report, pData);
         }
     }
 }

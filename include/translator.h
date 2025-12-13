@@ -8,6 +8,7 @@
 
 #include "xbox360.h"
 #include "xboxone.h"
+#include "switch_controller.h"
 #include "ds4.h"
 #include "config.h"
 
@@ -17,7 +18,8 @@
 typedef enum {
     CONTROLLER_NONE = 0,
     CONTROLLER_XBOX360,
-    CONTROLLER_XBOXONE
+    CONTROLLER_XBOXONE,
+    CONTROLLER_SWITCH
 } ControllerType;
 
 /*
@@ -73,5 +75,19 @@ void translator_convert_xboxone(const XboxOneReport* xbox, OrbisPadData* ds4, co
  * Simple wrapper - translate Xbox One report to DS4 format using defaults
  */
 void xboxone_to_ds4(const XboxOneReport* xbox, OrbisPadData* ds4);
+
+/*
+ * Translate Switch Input-Only controller report to OrbisPadData
+ *
+ * @param sw       Input Switch controller report
+ * @param ds4      Output OrbisPadData structure
+ * @param config   Translator configuration (or NULL for defaults)
+ */
+void translator_convert_switch(const SwitchInputOnlyReport* sw, OrbisPadData* ds4, const TranslatorConfig* config);
+
+/*
+ * Simple wrapper - translate Switch controller report to DS4 format using defaults
+ */
+void switch_to_ds4(const SwitchInputOnlyReport* sw, OrbisPadData* ds4);
 
 #endif // TRANSLATOR_H

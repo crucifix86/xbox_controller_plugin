@@ -338,3 +338,168 @@ void translator_convert_xboxone(const XboxOneReport* xbox, OrbisPadData* ds4, co
 void xboxone_to_ds4(const XboxOneReport* xbox, OrbisPadData* ds4) {
     translator_convert_xboxone(xbox, ds4, NULL);
 }
+
+/*
+ * Convert Switch hat value to DS4 d-pad buttons
+ */
+static uint32_t switch_hat_to_dpad(uint8_t hat) {
+    switch (hat) {
+        case SWITCH_HAT_UP:
+            return DS4_BUTTON_DPAD_UP;
+        case SWITCH_HAT_UP_RIGHT:
+            return DS4_BUTTON_DPAD_UP | DS4_BUTTON_DPAD_RIGHT;
+        case SWITCH_HAT_RIGHT:
+            return DS4_BUTTON_DPAD_RIGHT;
+        case SWITCH_HAT_DOWN_RIGHT:
+            return DS4_BUTTON_DPAD_DOWN | DS4_BUTTON_DPAD_RIGHT;
+        case SWITCH_HAT_DOWN:
+            return DS4_BUTTON_DPAD_DOWN;
+        case SWITCH_HAT_DOWN_LEFT:
+            return DS4_BUTTON_DPAD_DOWN | DS4_BUTTON_DPAD_LEFT;
+        case SWITCH_HAT_LEFT:
+            return DS4_BUTTON_DPAD_LEFT;
+        case SWITCH_HAT_UP_LEFT:
+            return DS4_BUTTON_DPAD_UP | DS4_BUTTON_DPAD_LEFT;
+        default:
+            return 0;  // Centered or invalid
+    }
+}
+
+/*
+ * Switch Input-Only controller translation function
+ */
+void translator_convert_switch(const SwitchInputOnlyReport* sw, OrbisPadData* ds4, const TranslatorConfig* config) {
+    // Use default config if none provided
+    TranslatorConfig default_config;
+    if (!config) {
+        translator_init(&default_config);
+        // Switch sticks don't need Y-axis inversion
+        default_config.invert_left_y = 0;
+        default_config.invert_right_y = 0;
+        config = &default_config;
+    }
+
+    // Clear output structure
+    memset(ds4, 0, sizeof(OrbisPadData));
+
+    // ========================================
+    // ANALOG STICKS (already 8-bit 0-255 format)
+    // ========================================
+
+    uint8_t lx = sw->left_stick_x;
+    uint8_t ly = sw->left_stick_y;
+    uint8_t rx = sw->right_stick_x;
+    uint8_t ry = sw->right_stick_y;
+
+    // Apply Y-axis inversion if configured
+    if (config->invert_left_y) {
+        ly = 255 - ly;
+    }
+    if (config->invert_right_y) {
+        ry = 255 - ry;
+    }
+
+    // Apply deadzone
+    if (config->stick_deadzone > 0) {
+        lx = translator_apply_deadzone(lx, config->stick_deadzone);
+        ly = translator_apply_deadzone(ly, config->stick_deadzone);
+        rx = translator_apply_deadzone(rx, config->stick_deadzone);
+        ry = translator_apply_deadzone(ry, config->stick_deadzone);
+    }
+
+    ds4->leftStick.x = lx;
+    ds4->leftStick.y = ly;
+    ds4->rightStick.x = rx;
+    ds4->rightStick.y = ry;
+
+    // ========================================
+    // ANALOG TRIGGERS (Switch has digital only, fake analog)
+    // ========================================
+
+    // ZL/ZR are digital on Switch, output full press or nothing
+    ds4->analogButtons.l2 = (sw->buttons0 & SWITCH_BTN_ZL) ? 255 : 0;
+    ds4->analogButtons.r2 = (sw->buttons0 & SWITCH_BTN_ZR) ? 255 : 0;
+
+    // ========================================
+    // DIGITAL BUTTONS
+    // ========================================
+
+    uint32_t ds4_buttons = 0;
+
+    // Face buttons - Switch uses Nintendo layout (A=East, B=South)
+    // Map to PS4 positions: A->Circle, B->Cross, X->Triangle, Y->Square
+    if (config->swap_ab) {
+        if (sw->buttons0 & SWITCH_BTN_A) ds4_buttons |= DS4_BUTTON_CROSS;
+        if (sw->buttons0 & SWITCH_BTN_B) ds4_buttons |= DS4_BUTTON_CIRCLE;
+    } else {
+        if (sw->buttons0 & SWITCH_BTN_A) ds4_buttons |= DS4_BUTTON_CIRCLE;
+        if (sw->buttons0 & SWITCH_BTN_B) ds4_buttons |= DS4_BUTTON_CROSS;
+    }
+
+    if (config->swap_xy) {
+        if (sw->buttons0 & SWITCH_BTN_X) ds4_buttons |= DS4_BUTTON_SQUARE;
+        if (sw->buttons0 & SWITCH_BTN_Y) ds4_buttons |= DS4_BUTTON_TRIANGLE;
+    } else {
+        if (sw->buttons0 & SWITCH_BTN_X) ds4_buttons |= DS4_BUTTON_TRIANGLE;
+        if (sw->buttons0 & SWITCH_BTN_Y) ds4_buttons |= DS4_BUTTON_SQUARE;
+    }
+
+    // Shoulder buttons
+    if (sw->buttons0 & SWITCH_BTN_L) ds4_buttons |= DS4_BUTTON_L1;
+    if (sw->buttons0 & SWITCH_BTN_R) ds4_buttons |= DS4_BUTTON_R1;
+
+    // Digital trigger buttons
+    if (sw->buttons0 & SWITCH_BTN_ZL) ds4_buttons |= DS4_BUTTON_L2;
+    if (sw->buttons0 & SWITCH_BTN_ZR) ds4_buttons |= DS4_BUTTON_R2;
+
+    // Stick click buttons (byte 1)
+    if (sw->buttons1 & SWITCH_BTN_L3) ds4_buttons |= DS4_BUTTON_L3;
+    if (sw->buttons1 & SWITCH_BTN_R3) ds4_buttons |= DS4_BUTTON_R3;
+
+    // Menu buttons (byte 1)
+    if (sw->buttons1 & SWITCH_BTN_PLUS)  ds4_buttons |= DS4_BUTTON_OPTIONS;
+    if (sw->buttons1 & SWITCH_BTN_MINUS) ds4_buttons |= DS4_BUTTON_SHARE;
+
+    // Home button -> PS button
+    if (sw->buttons1 & SWITCH_BTN_HOME) ds4_buttons |= DS4_BUTTON_PS;
+
+    // ========================================
+    // D-PAD
+    // ========================================
+
+    ds4_buttons |= switch_hat_to_dpad(sw->hat);
+
+    // Store final button state
+    ds4->buttons = ds4_buttons;
+
+    // ========================================
+    // STATUS & METADATA
+    // ========================================
+
+    ds4->connected = 1;
+    ds4->timestamp = s_timestamp++;
+
+    // Motion data - set to neutral
+    ds4->quat.x = 0.0f;
+    ds4->quat.y = 0.0f;
+    ds4->quat.z = 0.0f;
+    ds4->quat.w = 1.0f;
+
+    ds4->vel.x = 0.0f;
+    ds4->vel.y = 0.0f;
+    ds4->vel.z = 0.0f;
+
+    ds4->acell.x = 0.0f;
+    ds4->acell.y = 0.0f;
+    ds4->acell.z = 1.0f;  // 1g downward
+
+    // Touchpad - no touches
+    ds4->touch.fingers = 0;
+}
+
+/*
+ * Simple wrapper for Switch translation with default config
+ */
+void switch_to_ds4(const SwitchInputOnlyReport* sw, OrbisPadData* ds4) {
+    translator_convert_switch(sw, ds4, NULL);
+}

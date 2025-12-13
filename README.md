@@ -1,16 +1,24 @@
 # Xbox Controller Plugin for PS4
 
-A GoldHEN plugin that enables Xbox USB controllers on jailbroken PS4 consoles.
+A GoldHEN plugin that enables Xbox and Nintendo Switch USB controllers on jailbroken PS4 consoles.
 
 ## Status: WORKING (Single Player + Local Multiplayer)
 
 Xbox controllers work as Player 2 in local multiplayer games! DS4 remains Player 1.
 
 ### Supported Controllers
-- **Xbox 360** wired USB controller
-- **Xbox One** wired USB controller
-- **Xbox Series X|S** wired USB controller
+
+**Xbox Controllers:**
+- Xbox 360 wired USB controller
+- Xbox One wired USB controller
+- Xbox Series X|S wired USB controller
 - Xbox Elite controllers (wired)
+
+**Nintendo Switch Controllers (PDP):**
+- PDP Rock Candy Wired Controller
+- PDP Faceoff Wired Pro Controller
+- PDP Faceoff Deluxe Wired Pro Controller
+- PDP Wired Fight Pad Pro
 
 **Note for Xbox One/Series controllers:** The controller must be **off** (Xbox button not lit) when launching the game. The plugin will detect and initialize it. If the controller is already on, unplug and replug it, or turn it off before starting the game.
 
@@ -28,7 +36,7 @@ Xbox controllers work as Player 2 in local multiplayer games! DS4 remains Player
 
 - Jailbroken PS4 (tested on 9.00)
 - GoldHEN 2.3 or newer
-- Xbox **wired** USB controller (360, One, or Series X|S)
+- Supported **wired** USB controller (Xbox 360/One/Series or PDP Switch controller)
 - A real DS4 controller (for system menu and Player 1)
 
 ## Installation
@@ -68,8 +76,10 @@ For games where Player 2 joins by pressing Start:
 
 ## Button Mapping
 
-| Xbox 360 | DualShock 4 |
-|----------|-------------|
+### Xbox Controllers
+
+| Xbox | DualShock 4 |
+|------|-------------|
 | A | Cross (X) |
 | B | Circle |
 | X | Square |
@@ -84,13 +94,34 @@ For games where Player 2 joins by pressing Start:
 | L3 | L3 |
 | R3 | R3 |
 
+### Switch Controllers (PDP)
+
+| Switch | DualShock 4 |
+|--------|-------------|
+| A | Circle |
+| B | Cross (X) |
+| X | Triangle |
+| Y | Square |
+| L | L1 |
+| R | R1 |
+| ZL | L2 |
+| ZR | R2 |
+| - | Share |
+| + | Options |
+| Home | PS Button |
+| L3 | L3 |
+| R3 | R3 |
+
+**Note:** Switch controllers use positional mapping (A is in Circle position, B is in Cross position).
+
 ## Limitations
 
-- No touchpad (Xbox controller has none)
+- No touchpad (third-party controllers have none)
 - No motion controls (no gyro/accelerometer)
 - No lightbar feedback
 - No controller audio
 - Requires DS4 for system menu
+- Switch controller triggers are digital only (full press or nothing)
 
 ## Building
 
